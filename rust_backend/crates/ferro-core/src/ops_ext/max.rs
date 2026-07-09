@@ -2,8 +2,9 @@
 //! elements with torch semantics: empty input is an error and NaN propagates
 //! (the first NaN encountered wins). Backward matches torch's
 //! evenly_distribute_backward: the incoming scalar grad is split evenly across
-//! every element equal to the max, so ties share it; a NaN result matches no
-//! element (NaN != NaN) and yields zero gradients, as in torch.
+//! every element equal to the max, so ties share it; a NaN result switches
+//! the mask to isnan(input) so the gradient routes to the NaN entries, as in
+//! torch's evenly_distribute_backward.
 
 use crate::error::{Error, Result};
 use crate::tensor::Tensor;
@@ -26,8 +27,11 @@ impl Tensor {
         }
         // Capture only the tie indices, not the materialized input: the closure
         // lives as long as the output, and xv would pin a full copy in memory.
+        // A NaN max matches torch's evenly_distribute_backward: the mask
+        // becomes isnan(input), so the gradient routes to the NaN entries.
+        let tie = |v: f32| if m.is_nan() { v.is_nan() } else { v == m };
         let ties: Vec<usize> =
-            xv.iter().enumerate().filter(|(_, &v)| v == m).map(|(i, _)| i).collect();
+            xv.iter().enumerate().filter(|(_, &v)| tie(v)).map(|(i, _)| i).collect();
         let len = xv.len();
         let out = Tensor::scalar(m);
         let shape = self.shape().to_vec();
