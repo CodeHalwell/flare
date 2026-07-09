@@ -126,6 +126,15 @@ impl Module for Sequential {
 /// the same shape: mean over the batch of -sum(target * log_softmax(logits)).
 /// Composed from autograd ops, so the gradient flows without a custom backward.
 pub fn cross_entropy(logits: &Tensor, targets_one_hot: &Tensor) -> Result<Tensor> {
+    // Exact shape match: mul broadcasts, so a [1, classes] or [classes] target
+    // against a batch would silently train every row on the same label.
+    if targets_one_hot.shape() != logits.shape() {
+        return Err(Error::ShapeMismatch {
+            op: "cross_entropy",
+            lhs: logits.shape().to_vec(),
+            rhs: targets_one_hot.shape().to_vec(),
+        });
+    }
     Ok(logits.log_softmax(1)?.mul(targets_one_hot)?.sum_dim(1, false)?.neg().mean())
 }
 
@@ -162,6 +171,12 @@ pub fn cross_entropy_indices(logits: &Tensor, target_ids: &Tensor) -> Result<Ten
         return Err(Error::InvalidShape {
             op: "cross_entropy_indices",
             msg: format!("logits must be 2-D [batch, classes], got {:?}", logits.shape()),
+        });
+    }
+    if target_ids.numel() != logits.shape()[0] {
+        return Err(Error::InvalidShape {
+            op: "cross_entropy_indices",
+            msg: format!("{} target ids for batch of {}", target_ids.numel(), logits.shape()[0]),
         });
     }
     cross_entropy(logits, &one_hot(target_ids, logits.shape()[1])?)

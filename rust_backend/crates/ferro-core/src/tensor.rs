@@ -375,10 +375,6 @@ impl Tensor {
         *self.0.grad.lock().unwrap() = None;
     }
 
-    pub(crate) fn set_grad(&self, g: Tensor) {
-        *self.0.grad.lock().unwrap() = Some(g);
-    }
-
     pub(crate) fn accumulate_grad(&self, g: Tensor) {
         assert!(
             g.shape() == self.shape(),

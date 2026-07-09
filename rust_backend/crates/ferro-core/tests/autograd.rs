@@ -130,3 +130,13 @@ fn linear_regression_converges() {
     assert_close(w.to_vec()[0], 2.0, 1e-1, "w0");
     assert_close(w.to_vec()[1], -3.0, 1e-1, "w1");
 }
+
+#[test]
+fn leaf_root_backward_accumulates() {
+    // backward() directly on a scalar leaf accumulates into its grad like any
+    // other leaf, rather than overwriting the seed.
+    let x = Tensor::scalar(3.0).requires_grad_(true);
+    x.backward();
+    x.backward();
+    assert_eq!(x.grad().unwrap().to_vec(), vec![2.0]);
+}
