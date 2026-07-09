@@ -135,7 +135,16 @@ pub fn cross_entropy(logits: &Tensor, targets_one_hot: &Tensor) -> Result<Tensor
             rhs: targets_one_hot.shape().to_vec(),
         });
     }
-    Ok(logits.log_softmax(1)?.mul(targets_one_hot)?.sum_dim(1, false)?.neg().mean())
+    let lp = logits.log_softmax(1)?;
+    // log_softmax may fall back to the host for device logits, so realign
+    // constant targets to its device. Targets that require grad cannot be
+    // moved silently (to_device detaches), so those keep the strict path.
+    let targets = if targets_one_hot.device() != lp.device() && !targets_one_hot.requires_grad() {
+        targets_one_hot.to_device(lp.device())?
+    } else {
+        targets_one_hot.clone()
+    };
+    Ok(lp.mul(&targets)?.sum_dim(1, false)?.neg().mean())
 }
 
 /// One-hot encode 1-D I64 class ids `[n]` into an f32 `[n, classes]` tensor.

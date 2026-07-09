@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use ferro_core::dispatch::{register_backend, Backend, BinaryKind, DeviceBuffer, ReduceKind, UnaryKind};
-use ferro_core::{Device, Result, Tensor};
+use ferro_core::nn::{cross_entropy, one_hot};
+use ferro_core::{DType, Device, Result, Tensor};
 
 // A fake device backend that stores data in host Vecs but counts every
 // transfer and kernel call, so tests can PROVE chained ops stay resident:
@@ -486,4 +487,44 @@ fn where_cond_backward_on_device_operands() {
     out.sum().backward();
     assert_eq!(a.grad().unwrap().to_vec(), vec![1.0, 0.0, 1.0, 0.0]);
     assert_eq!(b.grad().unwrap().to_vec(), vec![0.0, 1.0, 0.0, 1.0]);
+}
+
+#[test]
+fn to_dtype_reports_where_cast_storage_lives() {
+    let _serial = setup();
+    let x = Tensor::from_vec(vec![1.0, 2.0, 3.0], &[3]).unwrap().to_device(DEV).unwrap();
+    // A same-dtype cast shares the resident buffer; running a device kernel on
+    // it proves the tag is not a lie over host storage.
+    let same = x.to_dtype(DType::F32);
+    assert_eq!(same.device(), DEV);
+    assert_eq!(same.mul(&same).unwrap().to_vec(), vec![1.0, 4.0, 9.0]);
+    // Real casts materialize on the host and must say so, keeping a later
+    // to_device a genuine upload.
+    let wide = x.to_dtype(DType::F64);
+    assert_eq!(wide.device(), Device::Cpu);
+    assert_eq!(wide.to_vec_f64(), vec![1.0, 2.0, 3.0]);
+    let back = wide.to_dtype(DType::F32).to_device(DEV).unwrap();
+    assert_eq!(back.device(), DEV);
+    assert_eq!(back.relu().to_vec(), vec![1.0, 2.0, 3.0]);
+}
+
+#[test]
+fn cross_entropy_on_device_logits_and_targets() {
+    let _serial = setup();
+    let logits = Tensor::from_vec(vec![2.0, 0.5, -1.0, 0.0, 1.5, 0.5], &[2, 3]).unwrap();
+    let hot = one_hot(&Tensor::from_vec_i64(vec![0, 1], &[2]).unwrap(), 3).unwrap();
+    let dlog = logits.to_device(DEV).unwrap().requires_grad_(true);
+    let dhot = hot.to_device(DEV).unwrap();
+    // log_softmax falls back to the host, so the loss must realign the
+    // constant target instead of erroring with DeviceMismatch.
+    let loss = cross_entropy(&dlog, &dhot).unwrap();
+    let clog = logits.requires_grad_(true);
+    let cpu_loss = cross_entropy(&clog, &hot).unwrap();
+    assert!((loss.item() - cpu_loss.item()).abs() < 1e-5);
+    loss.backward();
+    cpu_loss.backward();
+    let (g, cg) = (dlog.grad().unwrap().to_vec(), clog.grad().unwrap().to_vec());
+    for (a, b) in g.iter().zip(&cg) {
+        assert!((a - b).abs() < 1e-5, "{a} vs {b}");
+    }
 }

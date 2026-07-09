@@ -283,6 +283,13 @@ impl Tensor {
     /// Cast to `dtype`, returning a detached contiguous leaf on the same
     /// device. This is the only route from F64/I64 data into float math.
     pub fn to_dtype(&self, dtype: DType) -> Tensor {
+        // Device storage is f32-only, so a same-dtype cast of a whole device
+        // buffer stays resident; every other cast materializes host storage
+        // and must report Cpu (a stale device tag would make a later
+        // to_device a no-op on host data).
+        if dtype == self.dtype() && self.device_resident_whole() {
+            return self.detach_copy();
+        }
         let storage = match dtype {
             DType::F32 => Storage::F32(self.to_vec()),
             DType::F64 => Storage::F64(self.to_vec_f64()),
@@ -293,7 +300,7 @@ impl Tensor {
             self.0.shape.clone(),
             default_strides(&self.0.shape),
             0,
-            self.0.device,
+            Device::Cpu,
             false,
             None,
         )
