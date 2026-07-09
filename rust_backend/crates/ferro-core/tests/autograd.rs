@@ -140,3 +140,11 @@ fn leaf_root_backward_accumulates() {
     x.backward();
     assert_eq!(x.grad().unwrap().to_vec(), vec![2.0]);
 }
+
+#[test]
+fn relu_propagates_nan() {
+    let x = Tensor::from_vec(vec![f32::NAN, -1.0, 2.0], &[3]).unwrap();
+    let y = x.relu().to_vec();
+    assert!(y[0].is_nan());
+    assert_eq!(&y[1..], &[0.0, 2.0]);
+}

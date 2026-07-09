@@ -27,7 +27,8 @@ fn c_f32(v: f32) -> String {
 pub fn unary_expr(kind: UnaryKind) -> String {
     match kind {
         UnaryKind::Neg => "-v".to_string(),
-        UnaryKind::Relu => "fmaxf(v, 0.0f)".to_string(),
+        // Not fmaxf: it drops NaN, torch's relu propagates it.
+        UnaryKind::Relu => "((v > 0.0f || isnan(v)) ? v : 0.0f)".to_string(),
         UnaryKind::Exp => "expf(v)".to_string(),
         UnaryKind::Sigmoid => "1.0f / (1.0f + expf(-v))".to_string(),
         UnaryKind::Tanh => "tanhf(v)".to_string(),
@@ -185,7 +186,7 @@ mod tests {
     #[test]
     fn unary_exprs_cover_every_kind() {
         assert_eq!(unary_expr(UnaryKind::Neg), "-v");
-        assert_eq!(unary_expr(UnaryKind::Relu), "fmaxf(v, 0.0f)");
+        assert_eq!(unary_expr(UnaryKind::Relu), "((v > 0.0f || isnan(v)) ? v : 0.0f)");
         assert_eq!(unary_expr(UnaryKind::Exp), "expf(v)");
         assert_eq!(unary_expr(UnaryKind::Sigmoid), "1.0f / (1.0f + expf(-v))");
         assert_eq!(unary_expr(UnaryKind::Tanh), "tanhf(v)");
@@ -219,7 +220,7 @@ mod tests {
     fn sources_declare_the_exported_kernel() {
         let src = unary_source(UnaryKind::Relu);
         assert!(src.contains(r#"extern "C" __global__ void ferro_kernel(const float* x, float* out, unsigned int n)"#));
-        assert!(src.contains("out[i] = fmaxf(v, 0.0f);"));
+        assert!(src.contains("out[i] = ((v > 0.0f || isnan(v)) ? v : 0.0f);"));
         let src = binary_source(BinaryKind::Div);
         assert!(src.contains(r#"extern "C" __global__ void ferro_kernel(const float* a, const float* b, float* out, unsigned int n)"#));
         assert!(src.contains("out[i] = x / y;"));

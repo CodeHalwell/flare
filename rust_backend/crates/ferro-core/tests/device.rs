@@ -461,3 +461,29 @@ fn optimizer_steps_keep_params_on_device() {
         assert!((d - c).abs() < 1e-5, "device {d} vs cpu {c}");
     }
 }
+
+#[test]
+fn reshape_of_device_view_keeps_real_device_storage() {
+    let _serial = setup();
+    let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+    let r = x.to_device(DEV).unwrap().transpose(0, 1).unwrap().reshape(&[6]).unwrap();
+    assert_eq!(r.device(), DEV);
+    // The result must be genuinely resident: a device kernel runs on it and
+    // the values match the same chain on cpu.
+    let doubled = r.mul(&r).unwrap();
+    assert_eq!(doubled.device(), DEV);
+    let cpu = x.transpose(0, 1).unwrap().reshape(&[6]).unwrap();
+    assert_eq!(doubled.to_vec(), cpu.mul(&cpu).unwrap().to_vec());
+}
+
+#[test]
+fn where_cond_backward_on_device_operands() {
+    let _serial = setup();
+    let mask = Tensor::from_vec(vec![1.0, 0.0, 1.0, 0.0], &[4]).unwrap().to_device(DEV).unwrap();
+    let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], &[4]).unwrap().to_device(DEV).unwrap().requires_grad_(true);
+    let b = Tensor::from_vec(vec![5.0, 6.0, 7.0, 8.0], &[4]).unwrap().to_device(DEV).unwrap().requires_grad_(true);
+    let out = Tensor::where_cond(&mask, &a, &b).unwrap();
+    out.sum().backward();
+    assert_eq!(a.grad().unwrap().to_vec(), vec![1.0, 0.0, 1.0, 0.0]);
+    assert_eq!(b.grad().unwrap().to_vec(), vec![0.0, 1.0, 0.0, 1.0]);
+}

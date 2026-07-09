@@ -441,18 +441,20 @@ impl Tensor {
                 msg: format!("cannot reshape {:?} into {shape:?}", self.0.shape),
             });
         }
-        // reshape needs contiguous data; materialize if this is a strided view.
+        // reshape needs contiguous data; materialize if this is a strided view
+        // (through the host, then back to the source device so the result's
+        // device tag always matches its storage).
         let base = if self.is_contiguous() {
             self.clone()
         } else {
-            Tensor::from_vec(self.to_vec(), &self.0.shape)?
+            Tensor::from_vec(self.to_vec(), &self.0.shape)?.to_device(self.0.device)?
         };
         let out = Tensor::from_parts(
             base.0.storage.clone(),
             shape.to_vec(),
             default_strides(shape),
             base.0.offset,
-            self.0.device,
+            base.0.device,
             false,
             None,
         );
