@@ -11,7 +11,7 @@ impl Tensor {
         if dim >= ndim {
             return Err(Error::InvalidShape { op: "mean_dim", msg: format!("dim {dim} out of range for rank {ndim}") });
         }
-        let n = self.shape()[dim] as f32;
+        let n = self.shape()[dim].max(1) as f32;
         self.sum_dim(dim, keepdim)?.mul(&Tensor::full_on(&[], 1.0 / n, self.device())?)
     }
 }

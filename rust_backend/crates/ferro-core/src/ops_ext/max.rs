@@ -24,15 +24,18 @@ impl Tensor {
                 m = v;
             }
         }
+        // Capture only the tie indices, not the materialized input: the closure
+        // lives as long as the output, and xv would pin a full copy in memory.
+        let ties: Vec<usize> =
+            xv.iter().enumerate().filter(|(_, &v)| v == m).map(|(i, _)| i).collect();
+        let len = xv.len();
         let out = Tensor::scalar(m);
         let shape = self.shape().to_vec();
         Ok(out.record_fn(vec![self.clone()], move |g| {
-            let ties: Vec<usize> =
-                xv.iter().enumerate().filter(|(_, &v)| v == m).map(|(i, _)| i).collect();
-            let mut grad = vec![0.0; xv.len()];
+            let mut grad = vec![0.0; len];
             if !ties.is_empty() {
                 let share = g.item() / ties.len() as f32;
-                for i in ties {
+                for &i in &ties {
                     grad[i] = share;
                 }
             }

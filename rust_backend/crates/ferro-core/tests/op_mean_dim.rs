@@ -20,3 +20,11 @@ fn mean_dim_grad() {
     grad_check(&[a.clone()], |t| t[0].mean_dim(1, false).unwrap().sum());
     grad_check(&[a], |t| t[0].mean_dim(0, true).unwrap().sum());
 }
+
+#[test]
+fn mean_dim_empty_dim_is_zero() {
+    // Matches mean(): an empty reduced dim yields 0, not inf from 1/0.
+    let x = Tensor::from_vec(vec![], &[2, 0]).unwrap();
+    let m = x.mean_dim(1, false).unwrap();
+    assert_eq!(m.to_vec(), vec![0.0, 0.0]);
+}
