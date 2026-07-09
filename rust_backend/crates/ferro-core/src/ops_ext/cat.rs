@@ -11,6 +11,11 @@ impl Tensor {
             op: "cat",
             msg: "expected a non-empty list of tensors".into(),
         })?;
+        for t in &tensors[1..] {
+            if t.device() != first.device() {
+                return Err(Error::DeviceMismatch { op: "cat", lhs: first.device(), rhs: t.device() });
+            }
+        }
         let base = first.shape().to_vec();
         if dim >= base.len() {
             return Err(Error::InvalidShape {

@@ -394,3 +394,26 @@ fn host_fallback_ops_return_cpu_tensors() {
         assert!((r - 1.0).abs() < 1e-5);
     }
 }
+
+#[test]
+fn mixed_device_composite_ops_error() {
+    let _serial = setup();
+    // Multi-input composite ops must reject mixed-device operands explicitly
+    // (matching the core kind-routed ops) rather than silently computing on
+    // the host.
+    let host3 = Tensor::from_vec(vec![1.0; 6], &[1, 2, 3]).unwrap();
+    let dev3 = host3.to_device(DEV).unwrap();
+    let host_bt = Tensor::from_vec(vec![1.0; 6], &[1, 3, 2]).unwrap();
+    assert!(matches!(dev3.bmm(&host_bt), Err(ferro_core::Error::DeviceMismatch { .. })));
+
+    let host2 = Tensor::ones(&[2, 2]);
+    let dev2 = host2.to_device(DEV).unwrap();
+    assert!(matches!(Tensor::cat(&[host2.clone(), dev2.clone()], 0), Err(ferro_core::Error::DeviceMismatch { .. })));
+
+    let img = Tensor::ones(&[1, 1, 3, 3]).to_device(DEV).unwrap();
+    let ker = Tensor::ones(&[1, 1, 2, 2]);
+    assert!(matches!(img.conv2d(&ker, 1, 0), Err(ferro_core::Error::DeviceMismatch { .. })));
+
+    let ids = Tensor::from_vec_i64(vec![0], &[1]).unwrap();
+    assert!(matches!(dev2.index_select_t(0, &ids), Err(ferro_core::Error::DeviceMismatch { .. })));
+}
