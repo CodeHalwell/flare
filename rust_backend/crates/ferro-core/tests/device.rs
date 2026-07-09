@@ -509,6 +509,23 @@ fn to_dtype_reports_where_cast_storage_lives() {
 }
 
 #[test]
+fn mul_backward_on_device_view_operands() {
+    let _serial = setup();
+    let x = Tensor::from_vec(vec![1.0, -2.0, 3.0, 4.0, 5.0, -6.0], &[2, 3]).unwrap();
+    let w = Tensor::from_vec(vec![0.5, 1.5, -1.0, 2.0, 0.25, -0.75], &[3, 2]).unwrap();
+    let xd = x.to_device(DEV).unwrap().requires_grad_(true);
+    let wd = w.to_device(DEV).unwrap();
+    // A transposed operand forces the host fallback; the result must come
+    // back to the device so backward kernels see a single device.
+    let out = xd.transpose(0, 1).unwrap().mul(&wd).unwrap();
+    assert_eq!(out.device(), DEV);
+    out.sum().backward();
+    let xc = x.requires_grad_(true);
+    xc.transpose(0, 1).unwrap().mul(&w).unwrap().sum().backward();
+    assert_eq!(xd.grad().unwrap().to_vec(), xc.grad().unwrap().to_vec());
+}
+
+#[test]
 fn cross_entropy_on_device_logits_and_targets() {
     let _serial = setup();
     let logits = Tensor::from_vec(vec![2.0, 0.5, -1.0, 0.0, 1.5, 0.5], &[2, 3]).unwrap();

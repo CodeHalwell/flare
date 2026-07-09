@@ -29,3 +29,11 @@ fn clamp_boundary_passes_gradient() {
     x.clamp(0.0, 1.0).sum().backward();
     assert_eq!(x.grad().unwrap().to_vec(), vec![1.0, 1.0, 1.0, 0.0, 0.0]);
 }
+
+#[test]
+fn clamp_propagates_nan() {
+    let a = Tensor::from_vec(vec![f32::NAN, -1.0, 2.0], &[3]).unwrap();
+    let y = a.clamp(0.0, 1.0).to_vec();
+    assert!(y[0].is_nan());
+    assert_eq!(&y[1..], &[0.0, 1.0]);
+}

@@ -159,8 +159,11 @@ impl Backend for CpuBackend {
             UnaryKind::Log => v.ln(),
             UnaryKind::Powf(p) => v.powf(p),
             // max/min chain, not f32::clamp (which panics on min > max);
-            // matches torch: min > max yields max everywhere.
-            UnaryKind::Clamp { min, max } => v.max(min).min(max),
+            // matches torch: min > max yields max everywhere. NaN passes
+            // through explicitly since f32::max/min would drop it.
+            UnaryKind::Clamp { min, max } => {
+                if v.is_nan() { v } else { v.max(min).min(max) }
+            }
             UnaryKind::Gtz => {
                 if v > 0.0 {
                     1.0

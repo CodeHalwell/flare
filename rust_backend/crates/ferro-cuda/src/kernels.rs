@@ -37,9 +37,10 @@ pub fn unary_expr(kind: UnaryKind) -> String {
         UnaryKind::Log => "logf(v)".to_string(),
         UnaryKind::Powf(p) => format!("powf(v, {})", c_f32(p)),
         // max-then-min chain matches core's CpuBackend (and torch):
-        // min > max yields max everywhere.
+        // min > max yields max everywhere; NaN passes through explicitly
+        // since fmaxf/fminf would drop it.
         UnaryKind::Clamp { min, max } => {
-            format!("fminf(fmaxf(v, {}), {})", c_f32(min), c_f32(max))
+            format!("(isnan(v) ? v : fminf(fmaxf(v, {}), {}))", c_f32(min), c_f32(max))
         }
         UnaryKind::Gtz => "(v > 0.0f) ? 1.0f : 0.0f".to_string(),
     }
@@ -195,16 +196,16 @@ mod tests {
         assert_eq!(unary_expr(UnaryKind::Log), "logf(v)");
         assert_eq!(unary_expr(UnaryKind::Powf(2.5)), "powf(v, 2.5f)");
         let clamp = UnaryKind::Clamp { min: -1.0, max: 2.0 };
-        assert_eq!(unary_expr(clamp), "fminf(fmaxf(v, -1.0f), 2.0f)");
+        assert_eq!(unary_expr(clamp), "(isnan(v) ? v : fminf(fmaxf(v, -1.0f), 2.0f))");
         assert_eq!(unary_expr(UnaryKind::Gtz), "(v > 0.0f) ? 1.0f : 0.0f");
     }
 
     #[test]
     fn scalar_formatting_handles_nonfinite_and_exponents() {
         let one_sided = UnaryKind::Clamp { min: 0.0, max: f32::INFINITY };
-        assert_eq!(unary_expr(one_sided), "fminf(fmaxf(v, 0.0f), __int_as_float(0x7f800000))");
+        assert_eq!(unary_expr(one_sided), "(isnan(v) ? v : fminf(fmaxf(v, 0.0f), __int_as_float(0x7f800000)))");
         let lo = UnaryKind::Clamp { min: f32::NEG_INFINITY, max: 1e10 };
-        assert_eq!(unary_expr(lo), "fminf(fmaxf(v, __int_as_float(0xff800000)), 10000000000.0f)");
+        assert_eq!(unary_expr(lo), "(isnan(v) ? v : fminf(fmaxf(v, __int_as_float(0xff800000)), 10000000000.0f))");
         assert_eq!(unary_expr(UnaryKind::Powf(f32::NAN)), "powf(v, __int_as_float(0x7fc00000))");
     }
 
