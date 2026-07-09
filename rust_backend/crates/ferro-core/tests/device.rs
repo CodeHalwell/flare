@@ -163,7 +163,7 @@ impl Backend for FakeDevice {
         let s: f32 = v.iter().sum();
         let out = match kind {
             ReduceKind::Sum => s,
-            ReduceKind::Mean => s / v.len().max(1) as f32,
+            ReduceKind::Mean => s / v.len() as f32,
         };
         Ok(Box::new(FakeBuf(vec![out])))
     }

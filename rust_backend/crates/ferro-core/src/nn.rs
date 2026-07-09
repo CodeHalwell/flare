@@ -85,6 +85,14 @@ impl LayerNorm {
 
 impl Module for LayerNorm {
     fn forward(&self, x: &Tensor) -> Result<Tensor> {
+        // Reducing dim 1 while gamma/beta broadcast over the last dim only
+        // agrees when both are the feature dim, i.e. for 2-D input.
+        if x.ndim() != 2 {
+            return Err(Error::InvalidShape {
+                op: "layer_norm",
+                msg: format!("input must be 2-D [batch, dim], got {:?}", x.shape()),
+            });
+        }
         let mu = x.mean_dim(1, true)?;
         let centered = x.sub(&mu)?;
         let var = centered.mul(&centered)?.mean_dim(1, true)?;

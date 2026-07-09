@@ -22,9 +22,10 @@ fn mean_dim_grad() {
 }
 
 #[test]
-fn mean_dim_empty_dim_is_zero() {
-    // Matches mean(): an empty reduced dim yields 0, not inf from 1/0.
+fn empty_mean_is_nan() {
+    // Matches torch: empty means are NaN (0/0), not a silent 0 that would
+    // make an empty-batch loss look valid.
     let x = Tensor::from_vec(vec![], &[2, 0]).unwrap();
-    let m = x.mean_dim(1, false).unwrap();
-    assert_eq!(m.to_vec(), vec![0.0, 0.0]);
+    assert!(x.mean_dim(1, false).unwrap().to_vec().iter().all(|v| v.is_nan()));
+    assert!(Tensor::zeros(&[0]).mean().item().is_nan());
 }

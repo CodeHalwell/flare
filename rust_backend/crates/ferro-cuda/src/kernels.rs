@@ -117,8 +117,8 @@ pub fn binary_bc_source(kind: BinaryKind, rank: usize) -> String {
 pub fn reduce_source(kind: ReduceKind) -> String {
     let finish = match kind {
         ReduceKind::Sum => "acc",
-        // Empty-input mean matches core's CPU path: 0 / max(1) = 0.
-        ReduceKind::Mean => "acc / (float)(n > 0u ? n : 1u)",
+        // Empty-input mean matches core's CPU path and torch: 0/0 = NaN.
+        ReduceKind::Mean => "acc / (float)n",
     };
     format!(
         r#"extern "C" __global__ void {KERNEL_NAME}(const float* x, float* out, unsigned int n) {{
@@ -253,7 +253,7 @@ mod tests {
         assert!(sum.contains("for (unsigned int i = 0; i < n; ++i) acc += x[i];"));
         assert!(sum.contains("out[0] = acc;"));
         let mean = reduce_source(ReduceKind::Mean);
-        assert!(mean.contains("out[0] = acc / (float)(n > 0u ? n : 1u);"));
+        assert!(mean.contains("out[0] = acc / (float)n;"));
     }
 
     #[test]

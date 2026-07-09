@@ -449,12 +449,18 @@ impl Tensor {
             });
         }
         // reshape needs contiguous data; materialize if this is a strided view
-        // (through the host, then back to the source device so the result's
-        // device tag always matches its storage).
+        // (through the host, preserving dtype, then back to the source device
+        // so the result's device tag always matches its storage; non-F32
+        // views are always host tensors, so their to_device is a no-op).
         let base = if self.is_contiguous() {
             self.clone()
         } else {
-            Tensor::from_vec(self.to_vec(), &self.0.shape)?.to_device(self.0.device)?
+            let host = match self.dtype() {
+                DType::F32 => Tensor::from_vec(self.to_vec(), &self.0.shape)?,
+                DType::F64 => Tensor::from_vec_f64(self.to_vec_f64(), &self.0.shape)?,
+                DType::I64 => Tensor::from_vec_i64(self.to_vec_i64(), &self.0.shape)?,
+            };
+            host.to_device(self.0.device)?
         };
         let out = Tensor::from_parts(
             base.0.storage.clone(),
