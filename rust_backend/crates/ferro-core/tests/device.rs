@@ -417,3 +417,47 @@ fn mixed_device_composite_ops_error() {
     let ids = Tensor::from_vec_i64(vec![0], &[1]).unwrap();
     assert!(matches!(dev2.index_select_t(0, &ids), Err(ferro_core::Error::DeviceMismatch { .. })));
 }
+
+#[test]
+fn mean_dim_on_device_matches_cpu() {
+    let _serial = setup();
+    let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]).unwrap();
+    let dev = x.to_device(DEV).unwrap().mean_dim(1, false).unwrap();
+    assert_eq!(dev.device(), DEV);
+    assert_eq!(dev.to_vec(), x.mean_dim(1, false).unwrap().to_vec());
+}
+
+#[test]
+fn optimizer_steps_keep_params_on_device() {
+    let _serial = setup();
+    let x = Tensor::from_vec(vec![1.0, 0.5, -0.3, 1.2], &[2, 2]).unwrap();
+    let y = Tensor::from_vec(vec![2.0, -1.0], &[2, 1]).unwrap();
+    let w0 = Tensor::from_vec(vec![0.1, -0.2], &[2, 1]).unwrap();
+
+    let run = |device: Option<Device>| -> (Device, Vec<f32>) {
+        let (mut xs, mut ys, mut ws) = (x.clone(), y.clone(), w0.clone());
+        if let Some(d) = device {
+            xs = xs.to_device(d).unwrap();
+            ys = ys.to_device(d).unwrap();
+            ws = ws.to_device(d).unwrap();
+        }
+        let p = ferro_core::Param::new(ws);
+        let mut opt = ferro_core::optim::Sgd::new(vec![p.clone()], 0.1);
+        for _ in 0..5 {
+            let diff = xs.matmul(&p.tensor()).unwrap().sub(&ys).unwrap();
+            let loss = diff.mul(&diff).unwrap().mean();
+            opt.zero_grad();
+            loss.backward();
+            opt.step();
+        }
+        (p.tensor().device(), p.tensor().to_vec())
+    };
+
+    let (cpu_dev, cpu_w) = run(None);
+    let (dev_dev, dev_w) = run(Some(DEV));
+    assert_eq!(cpu_dev, Device::Cpu);
+    assert_eq!(dev_dev, DEV, "optimizer must not migrate params off the device");
+    for (d, c) in dev_w.iter().zip(cpu_w.iter()) {
+        assert!((d - c).abs() < 1e-5, "device {d} vs cpu {c}");
+    }
+}

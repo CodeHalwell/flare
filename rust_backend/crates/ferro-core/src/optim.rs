@@ -115,6 +115,10 @@ impl Adam {
 }
 
 fn set_leaf(p: &Param, vals: Vec<f32>, shape: &[usize]) {
+    // Step math runs on host Vecs, but the leaf must go back to wherever the
+    // parameter lives or a device param would silently migrate to cpu.
+    let device = p.tensor().device();
     let updated: Result<Tensor> = Tensor::from_vec(vals, shape);
-    p.set(updated.expect("optimizer rebuilds a leaf with the same shape"));
+    let host = updated.expect("optimizer rebuilds a leaf with the same shape");
+    p.set(host.to_device(device).expect("param's device backend is registered"));
 }
